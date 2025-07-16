@@ -4,7 +4,7 @@ from utils import load_all_excels, semantic_search
 
 # ----------------------------------------------
 # 👇 СЮДА ВСТАВЬ СВОЙ API-токен Hugging Face
-HUGGINGFACE_TOKEN = "hf_..."  # 🔐 ВСТАВЬ СЮДА свой токен Hugging Face
+HUGGINGFACE_TOKEN = "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"  # 🔐 ВСТАВЬ СЮДА свой токен Hugging Face
 API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct"
 HEADERS = {"Authorization": f"Bearer {HUGGINGFACE_TOKEN}"}
 # ----------------------------------------------
