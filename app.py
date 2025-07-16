@@ -1,33 +1,31 @@
-# chat_app.py
 import streamlit as st
 import requests
 
-st.title("💬 Простой чат без токена")
+st.title("Простой бесплатный чат-бот на HF Spaces")
 
-def ask_openrouter(prompt):
-    headers = {
-        "HTTP-Referer": "https://test.local",
-        "X-Title": "StreamlitTestApp"
-    }
-    payload = {
-        "model": "openchat/openchat-3.5",
-        "messages": [{"role": "user", "content": prompt}]
-    }
-    res = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
-    return res.json()['choices'][0]['message']['content']
+API_URL = "https://hf.space/embed/multimodalart/ChatGPT/api/predict/"  # пример публичного API (можно поменять)
 
-if "chat" not in st.session_state:
-    st.session_state.chat = []
+def ask_hf(prompt):
+    payload = {"data": [prompt]}
+    response = requests.post(API_URL, json=payload)
+    if response.status_code == 200:
+        result = response.json()
+        # В разных Spaces формат может отличаться, здесь берем первый ответ
+        if "data" in result and len(result["data"]) > 0:
+            return result["data"][0]
+        else:
+            return "Ошибка: ответ в неожиданном формате."
+    else:
+        return f"Ошибка API: {response.status_code} - {response.text}"
 
-for role, msg in st.session_state.chat:
-    st.chat_message(role).markdown(msg)
+chat_history = []
 
-prompt = st.chat_input("Задай вопрос")
+user_input = st.text_input("Введите сообщение:")
 
-if prompt:
-    st.session_state.chat.append(("user", prompt))
-    with st.chat_message("assistant"):
-        with st.spinner("Ответ..."):
-            answer = ask_openrouter(prompt)
-            st.session_state.chat.append(("assistant", answer))
-            st.markdown(answer)
+if user_input:
+    chat_history.append(f"Вы: {user_input}")
+    answer = ask_hf(user_input)
+    chat_history.append(f"Бот: {answer}")
+
+for msg in chat_history:
+    st.write(msg)
