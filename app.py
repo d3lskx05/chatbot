@@ -1,31 +1,36 @@
 import streamlit as st
-import requests
+from utils import load_all_excels, semantic_search  # импортируем из твоего utils.py
+import functools
 
-st.title("Простой бесплатный чат-бот на HF Spaces")
+@functools.lru_cache(maxsize=1)
+def load_data():
+    st.info("Загружаем и обрабатываем данные (может занять время)...")
+    df = load_all_excels()
+    st.success("Данные загружены!")
+    return df
 
-API_URL = "https://hf.space/embed/multimodalart/ChatGPT/api/predict/"  # пример публичного API (можно поменять)
+def main():
+    st.title("Чат-бот с семантическим поиском")
 
-def ask_hf(prompt):
-    payload = {"data": [prompt]}
-    response = requests.post(API_URL, json=payload)
-    if response.status_code == 200:
-        result = response.json()
-        # В разных Spaces формат может отличаться, здесь берем первый ответ
-        if "data" in result and len(result["data"]) > 0:
-            return result["data"][0]
+    df = load_data()
+
+    user_input = st.text_input("Введите вопрос:")
+
+    if user_input:
+        with st.spinner("Ищем ответы..."):
+            results = semantic_search(user_input, df, top_k=5, threshold=0.5)
+        
+        if results:
+            st.markdown("### Результаты поиска:")
+            for score, phrase, topics, comment in results:
+                st.write(f"**Фраза:** {phrase}")
+                st.write(f"**Темы:** {topics}")
+                if comment:
+                    st.write(f"**Комментарий:** {comment}")
+                st.write(f"**Похожесть:** {score:.3f}")
+                st.write("---")
         else:
-            return "Ошибка: ответ в неожиданном формате."
-    else:
-        return f"Ошибка API: {response.status_code} - {response.text}"
+            st.warning("Ничего не найдено по вашему запросу.")
 
-chat_history = []
-
-user_input = st.text_input("Введите сообщение:")
-
-if user_input:
-    chat_history.append(f"Вы: {user_input}")
-    answer = ask_hf(user_input)
-    chat_history.append(f"Бот: {answer}")
-
-for msg in chat_history:
-    st.write(msg)
+if __name__ == "__main__":
+    main()
