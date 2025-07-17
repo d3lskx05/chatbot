@@ -1,55 +1,49 @@
 import streamlit as st
-import gradio as gr
-from utils import load_all_excels, semantic_search  # твой utils.py должен быть рядом
-import requests
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
 
-# Загружаем данные один раз при старте
-try:
-    df = load_all_excels()
-except Exception as e:
-    print(f"Ошибка загрузки данных: {e}")
-    df = None
+@st.cache_resource(show_spinner=False)
+def load_model():
+    model_name = "gpt2"  # простая маленькая модель, без токенов
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    return tokenizer, model
 
-# Функция обращения к бесплатной онлайн модели Hugging Face без токена (пример с Falcon 7B - публичный)
-def query_llm_online(prompt):
-    API_URL = "https://api-inference.huggingface.co/models/tiiuae/falcon-7b-instruct"
-    # Можно менять на любую другую публичную модель из Hugging Face (без токена)
-    
-    payload = {
-        "inputs": prompt,
-        "options": {"wait_for_model": True, "use_cache": False}
-    }
-    headers = {
-        "Accept": "application/json",
-    }
-    response = requests.post(API_URL, json=payload, headers=headers)
-    
-    if response.status_code != 200:
-        return f"Ошибка от модели: {response.status_code}"
-    
-    try:
-        result = response.json()
-        # Обычно результат: list с одним элементом dict с ключом generated_text
-        return result[0]["generated_text"]
-    except Exception as e:
-        return f"Ошибка обработки ответа модели: {e}"
+def generate_response(tokenizer, model, prompt, chat_history_ids=None):
+    input_ids = tokenizer.encode(prompt + tokenizer.eos_token, return_tensors='pt')
+    if chat_history_ids is not None:
+        input_ids = torch.cat([chat_history_ids, input_ids], dim=-1)
+    chat_history_ids = model.generate(input_ids, max_length=1000, pad_token_id=tokenizer.eos_token_id)
+    response = tokenizer.decode(chat_history_ids[:, input_ids.shape[-1]:][0], skip_special_tokens=True)
+    return response, chat_history_ids
 
-# Функция для обработки вопроса пользователя и формирование ответа с контекстом
-def chatbot(user_message, chat_history):
-    if df is None:
-        return "Данные не загружены, бот не может отвечать.", chat_history
-    
-    # Ищем подходящие фразы из твоей базы по смыслу
-    search_results = semantic_search(user_message, df, top_k=3, threshold=0.5)
-    
-    # Формируем контекст из найденных фраз (можно брать топ 3)
-    context = "\n".join([f"- {res[1]} (темы: {res[2]})" for res in search_results])
-    
-    # Текст запроса для LLM включает вопрос и найденные фразы (контекст)
-    prompt = f"Вот контекст из базы знаний:\n{context}\n\nОтветь на вопрос пользователя:\n{user_message}"
-    
-    # Запрос к онлайн-модели
-    answer = query_llm_online(prompt)
-    
-    # Добавляем в историю и возвращаем обновленную
-    chat
+def main():
+    st.title("Простой чат-бот на GPT2 в Streamlit")
+
+    tokenizer, model = load_model()
+
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = None
+        st.session_state.past = []
+        st.session_state.generated = []
+
+    user_input = st.text_input("Ваш вопрос:", key="input")
+
+    if user_input:
+        # Добавляем вопрос пользователя к истории
+        prompt = user_input
+
+        # Генерируем ответ
+        response, chat_history_ids = generate_response(tokenizer, model, prompt, st.session_state.chat_history)
+
+        st.session_state.chat_history = chat_history_ids
+        st.session_state.past.append(user_input)
+        st.session_state.generated.append(response)
+
+    if st.session_state.generated:
+        for i in range(len(st.session_state.generated)):
+            st.markdown(f"**Вы:** {st.session_state.past[i]}")
+            st.markdown(f"**Бот:** {st.session_state.generated[i]}")
+
+if __name__ == "__main__":
+    main()
