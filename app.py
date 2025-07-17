@@ -1,49 +1,54 @@
-import streamlit as st
+import gradio as gr
+from utils import load_all_excels, semantic_search  # твой utils.py должен быть рядом
 import requests
 
-# Хранилище истории
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": "Ты полезный AI-ассистент. Отвечай четко и дружелюбно."}
-    ]
+# Загружаем данные один раз при старте
+try:
+    df = load_all_excels()
+except Exception as e:
+    print(f"Ошибка загрузки данных: {e}")
+    df = None
 
-# Отображаем историю сообщений
-st.title("💬 Онлайн GPT-бот без токенов")
-
-for msg in st.session_state.messages[1:]:  # не показываем system
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# Ввод пользователя
-prompt = st.chat_input("Напиши что-нибудь...")
-
-# === ФУНКЦИЯ ЗАПРОСА К ОНЛАЙН LLM ===
-def ask_online_llm(messages):
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "mistralai/mistral-7b-instruct",
-            "messages": messages,
-            "max_tokens": 300,
-        },
-    )
-
+# Функция обращения к бесплатной онлайн модели Hugging Face без токена (пример с Falcon 7B - публичный)
+def query_llm_online(prompt):
+    API_URL = "https://api-inference.huggingface.co/models/tiiuae/falcon-7b-instruct"
+    # Можно менять на любую другую публичную модель из Hugging Face (без токена)
+    
+    payload = {
+        "inputs": prompt,
+        "options": {"wait_for_model": True, "use_cache": False}
+    }
+    headers = {
+        "Accept": "application/json",
+    }
+    response = requests.post(API_URL, json=payload, headers=headers)
+    
     if response.status_code != 200:
-        return f"⚠️ Ошибка: {response.status_code}"
+        return f"Ошибка от модели: {response.status_code}"
+    
+    try:
+        result = response.json()
+        # Обычно результат: list с одним элементом dict с ключом generated_text
+        return result[0]["generated_text"]
+    except Exception as e:
+        return f"Ошибка обработки ответа модели: {e}"
 
-    return response.json()["choices"][0]["message"]["content"]
-
-# === Обработка нового сообщения ===
-if prompt:
-    st.chat_message("user").markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    with st.chat_message("assistant"):
-        with st.spinner("Пишу ответ..."):
-            reply = ask_online_llm(st.session_state.messages)
-            st.markdown(reply)
-
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+# Функция для обработки вопроса пользователя и формирование ответа с контекстом
+def chatbot(user_message, chat_history):
+    if df is None:
+        return "Данные не загружены, бот не может отвечать.", chat_history
+    
+    # Ищем подходящие фразы из твоей базы по смыслу
+    search_results = semantic_search(user_message, df, top_k=3, threshold=0.5)
+    
+    # Формируем контекст из найденных фраз (можно брать топ 3)
+    context = "\n".join([f"- {res[1]} (темы: {res[2]})" for res in search_results])
+    
+    # Текст запроса для LLM включает вопрос и найденные фразы (контекст)
+    prompt = f"Вот контекст из базы знаний:\n{context}\n\nОтветь на вопрос пользователя:\n{user_message}"
+    
+    # Запрос к онлайн-модели
+    answer = query_llm_online(prompt)
+    
+    # Добавляем в историю и возвращаем обновленную
+    chat
