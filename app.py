@@ -1,3 +1,4 @@
+import streamlit as st
 import gradio as gr
 from utils import load_all_excels, semantic_search  # твой utils.py должен быть рядом
 import requests
